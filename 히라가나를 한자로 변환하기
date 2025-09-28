@@ -1,0 +1,132 @@
+# hiragana_to_kanji.py
+import re
+import sys
+from jamdict import Jamdict
+import MeCab
+import jaconv
+
+jam = Jamdict()
+
+# MeCab 태거 (ipadic 기준으로 feature 필드에 reading이 들어있다고 가정)
+tagger = MeCab.Tagger('-Ochasen')  # -Ochasen 또는 기본 형식
+
+hiragana_re = re.compile(r'^[ぁ-んー]+$')  # 전체가 히라가나/장음(ー)인지 확인
+
+def token_reading_from_mecab(surface):
+    """MeCab으로 단어를 분석해 '읽기'(カナ) 추출.
+       MeCab의 출력 형식에 따라 인덱스가 달라질 수 있으니
+       필요한 경우 출력 확인 후 조정하세요.
+    """
+    node = tagger.parseToNode(surface)
+    # parseToNode로 단어 단위 접근 — 맨 앞 노드/맨 뒤 노드는 비어있음
+    readings = []
+    while node:
+        feature = node.feature.split(',')
+        # IPADIC/chasen: reading은 보통 feature[7]에 존재 (확인 필요)
+        reading = feature[7] if len(feature) > 7 and feature[7] != '*' else ''
+        if reading:
+            readings.append(reading)
+        else:
+            # surface 그대로 히라가나면 가나->가타카나로 변환해두기 (jamdict는 가타카나로 찾는게 안정적)
+            if hiragana_re.match(node.surface):
+                readings.append(jaconv.hira2kata(node.surface))
+            else:
+                readings.append(node.surface)
+        node = node.next
+    return ''.join(readings)
+
+def lookup_kanji_candidates(reading):
+    """Jamdict로 읽기(カナ)로 검색하여 가능한 한자 후보 리스트 반환."""
+    # jam.lookup은 한자/어휘 엔트리를 반환
+    result = jam.lookup(reading)
+    candidates = []
+    # result.entry_list 또는 result.entries 중 버전에 따라 접근법이 다를 수 있음
+    # 안전하게 entries 속성 사용 시도
+    entries = getattr(result, 'entries', None)
+    if entries is None:
+        # 대체 필드
+        entries = getattr(result, 'entry_list', [])
+    for ent in entries:
+        # 각 entry의 k_ele(kanji elements)을 순회
+        k_eles = getattr(ent, 'k_ele', [])
+        for k in k_eles:
+            keb = getattr(k, 'keb', None)
+            if keb:
+                candidates.append(keb)
+        # 만약 한자 정보가 없고 어휘 표면만 있으면 reading 그대로 추가하지 않음
+    # 중복 제거, 순서 유지
+    seen = set()
+    uniq = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+def convert_sentence(hiragana_sentence, prefer_first_candidate=True, use_user_dict=None):
+    """
+    문장(히라가나 포함)을 받아 토큰별로 한자 후보 중 하나를 선택해서 반환.
+    prefer_first_candidate: True면 후보의 첫 항목을 선택(가장 일반적인 표기).
+    use_user_dict: dict(reading_or_surface -> kanji) 형태의 사용자 사전 우선 적용 (선택)
+    """
+    if use_user_dict is None:
+        use_user_dict = {}
+
+    # 먼저 MeCab으로 문장 전체를 노드로 돌려 각 토큰 surface와 reading을 얻는다.
+    node = tagger.parseToNode(hiragana_sentence)
+    out_tokens = []
+    while node:
+        surface = node.surface
+        if not surface:
+            node = node.next
+            continue
+        # 사용자 사전 우선
+        if surface in use_user_dict:
+            out_tokens.append(use_user_dict[surface])
+            node = node.next
+            continue
+
+        # 전체 토큰이 히라가나면 읽기 얻기 -> jamdict 조회
+        if hiragana_re.match(surface):
+            # jamdict는 통상 가타카나/로마자 형태로 읽기를 받는 게 안정적
+            reading = jaconv.hira2kata(surface)
+            candidates = lookup_kanji_candidates(reading)
+            if candidates:
+                out_tokens.append(candidates[0] if prefer_first_candidate else f"{candidates}")
+            else:
+                # 후보 없으면 원문 유지
+                out_tokens.append(surface)
+        else:
+            # 히라가나가 아닌(한자/가타카나/알파벳 등) 경우는 표면 그대로 추가
+            out_tokens.append(surface)
+        node = node.next
+
+    return ''.join(out_tokens)
+
+if __name__ == '__main__':
+    # 간단한 테스트
+    examples = [
+        "にほんごをべんきょうします",      # 일본어를 공부합니다 -> "日本語を勉強します" 등
+        "かんじをよめますか",           # "漢字を読めますか"
+        "とうきょうはきれいです",       # "東京は綺麗です" 등 (문맥 의존)
+    ]
+
+    # 사용자 사전 예시 (자주 쓰는 표현을 명시적으로 맵핑)
+    user_dict = {
+        "にほんご": "日本語",
+        "べんきょう": "勉強",
+        "とうきょう": "東京",
+        "かんじ": "漢字",
+    }
+
+    for s in examples:
+        converted = convert_sentence(s, prefer_first_candidate=True, use_user_dict=user_dict)
+        print(f"원문: {s}")
+        print(f"변환: {converted}")
+        print('-' * 40)
+
+    # 커맨드라인 인자로 문장 넣어 실행 가능
+    if len(sys.argv) > 1:
+        inp = sys.argv[1]
+        print("입력:", inp)
+        print("출력:", convert_sentence(inp, prefer_first_candidate=True, use_user_dict=user_dict))
