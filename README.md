@@ -17,7 +17,9 @@ pip install --user mecab-python3 jamdict jaconv
 (사실 파파고같은거 쓰는게 더 빠르긴하지만 자연스러운 대화 문장을 만드는게 목표)
 
 JAMDICT=> 일본어 사전 데이터 베이스
+
 MECAP => 일본어 형태소 분석기, 일본어 텍스트를 단어 단위로 쪼개고 품사 태깅 해줌
+
 JACONV=> 일본어 텍스트 변환 도구
 
 가타가나 <=>히라가나 변환
