@@ -1,0 +1,24 @@
+from hangul_romanize import Transliter
+from hangul_romanize.rule import academic
+import pykakasi
+
+# 1. 한글 → 로마자
+trans = Transliter(academic)
+
+# 2. 로마자 → 히라가나 설정
+kakasi = pykakasi.kakasi()
+kakasi.setMode("H", "a")  # 히라가나
+kakasi.setMode("K", "a")  # 가타카나 → 히라가나
+kakasi.setMode("J", "a")  # 한자 → 히라가나
+kakasi.setMode("r", "Hepburn")  # 로마자 변환 방식
+conv = kakasi.getConverter()
+
+def hangul_to_hiragana(text):
+    romanized = trans.translit(text)
+    hiragana = conv.do(romanized)
+    return hiragana
+
+# 예시
+korean = "안녕하세요"
+result = hangul_to_hiragana(korean)
+print(f"{korean} → {result}")
