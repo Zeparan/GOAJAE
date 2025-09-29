@@ -67,7 +67,7 @@ print(jaconv.kata2alphabet('コンニチハ'))  # konnichiha
 
 2./usr/local/etc/mecabrc 파일이 없음
 
-mecabrc는 MeCab의 설정 파일입니다.
+mecabrc는 MeCab의 설정 파일
 
 이 파일이 없으면 MeCab이 사용할 사전(dictionary) 등을 설정하지 못해 초기화에 실패함.
 
